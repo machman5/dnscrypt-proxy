@@ -1,22 +1,71 @@
-- uses: WaterLemons2k/apk-action@v1
-  with:
-    # Contents of the keystore file (.jks), base64 encoded
-    keystore: ${{ secrets.KEYSTORE }}
-    # Password of the keystore
-    keystore-password: ${{ secrets.KEYSTORE_PASSWORD }}
-    # Alias of the key
-    key-alias: ${{ secrets.KEY_ALIAS }}
-    # Password of the key
-    key-password: ${{ secrets.KEY_PASSWORD }}
+name: "Build Signed APK"
+description: "Build a signed APK of your Android application"
 
-    # Optioanl
-    #
-    # The Java version to set up
-    # Default: see `src/java-version.js`
-    java-version: ''
-    # The arguments passed to Gradle
-    # Default: '--no-daemon'
-    gradle-args: ''
-    # Whether to build a release or debug APK
-    # Default: 'true'
-    release: true
+branding:
+  icon: cpu
+  color: red
+
+inputs:
+
+  keystore_b64:
+    description: "The contents of the keystore file, encoded as base64"
+    required: false
+
+  keystore_file:
+    description: "The path to the .jks keystore file"
+    required: false
+
+  keystore_password:
+    description: "Keystore file password"
+    required: true
+
+  key_alias:
+    description: "Key alias"
+    required: true
+
+  key_password:
+    description: "Key password"
+    required: true
+
+  gradlew_dir:
+    description: "Directory of the gradlew file"
+    required: false
+    default: "."
+
+  java_version:
+    description: "Java version to build the project with"
+    required: false
+    default: '11'
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
+
+    - name: Write keystore file from content
+      if: inputs.keystore_b64
+      shell: bash
+      run: echo "${{ inputs.keystore_b64 }}" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+
+    - name: Copy keystore file to right location
+      if: inputs.keystore_file && !inputs.keystore_b64
+      shell: bash
+      run: cp "${{ inputs.keystore_file }}" "$GITHUB_WORKSPACE/signing-key.jks"
+
+    - name: Build APK
+      shell: bash
+      working-directory: ${{ inputs.gradlew_dir }}
+      run: |
+        export JAVA_HOME="/usr/lib/jvm/temurin-${{ inputs.java_version }}-jdk-amd64"
+        chmod +x ./gradlew
+        ./gradlew build --no-daemon
+        ./gradlew assembleRelease --no-daemon \
+          -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/signing-key.jks" \
+          -Pandroid.injected.signing.store.password="${{ inputs.keystore_password }}" \
+          -Pandroid.injected.signing.key.alias="${{ inputs.key_alias }}" \
+          -Pandroid.injected.signing.key.password="${{ inputs.key_password }}"
+
+    - shell: bash
+      run: rm "$GITHUB_WORKSPACE/signing-key.jks"
