@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"codeberg.org/miekg/dns"
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
 )
 
 type localDoHHandler struct {
@@ -67,14 +67,14 @@ func (handler localDoHHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 		writer.WriteHeader(400)
 		return
 	}
-	response := proxy.processIncomingQuery("local_doh", proxy.mainProto, packet, &xClientAddr, nil, start, false)
+	response := proxy.processIncomingQuery("local_doh", proxy.xTransport.mainProto, packet, &xClientAddr, nil, start, false)
 	if len(response) == 0 {
 		writer.WriteHeader(500)
 		return
 	}
-	msg := dns.Msg{}
-	if err := msg.Unpack(packet); err != nil {
-		writer.WriteHeader(500)
+	msg := dns.Msg{Data: packet}
+	if err := msg.Unpack(); err != nil {
+		writer.WriteHeader(400)
 		return
 	}
 	responseLen := len(response)
@@ -84,6 +84,7 @@ func (handler localDoHHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 		response, err = addEDNS0PaddingIfNoneFound(&msg, response, padLen)
 		if err != nil {
 			dlog.Critical(err)
+			writer.WriteHeader(500)
 			return
 		}
 	} else {
