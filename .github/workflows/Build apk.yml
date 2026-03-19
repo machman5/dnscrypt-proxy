@@ -1,71 +1,26 @@
-name: "Build Signed APK"
-description: "Build a signed APK of your Android application"
+name: Build & Publish Release APK
 
-branding:
-  icon: cpu
-  color: red
+on:
+  push:
+    tags:
+      - '*'
 
-inputs:
-
-  keystore_b64:
-    description: "The contents of the keystore file, encoded as base64"
-    required: false
-
-  keystore_file:
-    description: "The path to the .jks keystore file"
-    required: false
-
-  keystore_password:
-    description: "Keystore file password"
-    required: true
-
-  key_alias:
-    description: "Key alias"
-    required: true
-
-  key_password:
-    description: "Key password"
-    required: true
-
-  gradlew_dir:
-    description: "Directory of the gradlew file"
-    required: false
-    default: "."
-
-  java_version:
-    description: "Java version to build the project with"
-    required: false
-    default: '11'
-
-runs:
-  using: "composite"
-  steps:
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
-
-    - name: Write keystore file from content
-      if: inputs.keystore_b64
-      shell: bash
-      run: echo "${{ inputs.keystore_b64 }}" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
-
-    - name: Copy keystore file to right location
-      if: inputs.keystore_file && !inputs.keystore_b64
-      shell: bash
-      run: cp "${{ inputs.keystore_file }}" "$GITHUB_WORKSPACE/signing-key.jks"
-
-    - name: Build APK
-      shell: bash
-      working-directory: ${{ inputs.gradlew_dir }}
-      run: |
-        export JAVA_HOME="/usr/lib/jvm/temurin-${{ inputs.java_version }}-jdk-amd64"
-        chmod +x ./gradlew
-        ./gradlew build --no-daemon
-        ./gradlew assembleRelease --no-daemon \
-          -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/signing-key.jks" \
-          -Pandroid.injected.signing.store.password="${{ inputs.keystore_password }}" \
-          -Pandroid.injected.signing.key.alias="${{ inputs.key_alias }}" \
-          -Pandroid.injected.signing.key.password="${{ inputs.key_password }}"
-
-    - shell: bash
-      run: rm "$GITHUB_WORKSPACE/signing-key.jks"
+jobs:
+  Gradle:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v2
+    - name: setup jdk
+      uses: actions/setup-java@v1
+      with:
+        java-version: 11
+    - name: Make Gradle executable
+      run: chmod +x ./gradlew
+    - name: Build Release APK
+      run: ./gradlew assembleRelease
+    - name: Releasing using Hub
+      uses: r0user/release-apk@main
+      env:
+       GITHUB_TOKEN: ${{ secrets.TOKEN }}
+       APP_FOLDER: app
